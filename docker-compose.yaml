@@ -1,7 +1,7 @@
 services:
   core-keeper:
     image: devidian/core-keeper-dedicated:sha-4220663c8d42f7a1df31e6ab2b698c0b8294a001
-    container_name: core-keeper-dedicated
+    entrypoint: ["/bin/bash", "/opt/ck/entrypoint.sh"]
     restart: unless-stopped
     stop_grace_period: 2m
     ports:
@@ -12,7 +12,13 @@ services:
       WORLD_NAME: "${WORLD_NAME:-AeTao}"
       SERVER_PORT: "${SERVER_PORT:-27015}"
       SERVER_PASSWORD: "${SERVER_PASSWORD}"
+      MAX_PLAYERS: "${MAX_PLAYERS:-8}"
+      UPDATE_ON_START: "${UPDATE_ON_START:-false}"
     volumes:
+      # Absolute host path: Coolify runs `up` with --project-directory inside the
+      # build container, so a relative bind here would resolve to a path that does
+      # not exist on the host and docker would substitute an empty directory.
+      - /data/coolify/applications/m9jszxgfqtd47puyi3qvmm7j/entrypoint.sh:/opt/ck/entrypoint.sh:ro
       - /srv/corekeeper/server-files:/home/steam/core-keeper-dedicated
       - /srv/corekeeper/data:/home/steam/core-keeper-data
     logging:

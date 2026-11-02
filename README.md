@@ -53,3 +53,25 @@ With no players the process stays up but the simulation is paused (`timescale = 
 ## Backups
 
 World snapshots live off-box in B2 at `b2://nanomicon-1-projects/core-keeper/<timestamp>/` and locally at `~/para/1-projects/personal/core-keeper-backups/<timestamp>/`. Snapshot procedure: stop the container (`docker stop core-keeper-dedicated`, up to 2 minutes for the final save), copy the whole `/srv/corekeeper/data/DedicatedServer` tree, then `b2 sync` it. Never copy while a save is in flight.
+
+## Install / update procedure (the steamcmd trap)
+
+SteamCMD on a host whose client is out of date spends its first invocations on the client self-update, restarts itself, and loses the `app_update` arguments. The install then fails with `Missing configuration` (or `Missing file permissions`) while the log shows repeated 41 MB self-update cycles. Both the devidian image and the plain `cm2network/steamcmd` image reproduce it, so it is steamcmd behaviour, not an image bug.
+
+Warm the client, then install, into the bind mount:
+
+```bash
+ssh vps07 'docker run --rm -v /srv/corekeeper/server-files:/home/steam/core-keeper-dedicated \
+  cm2network/steamcmd:latest bash -c "
+    s=/home/steam/steamcmd/steamcmd.sh
+    for i in 1 2 3; do \$s +quit > /tmp/w.\$i 2>&1; grep -q \"Update complete\" /tmp/w.\$i || break; done
+    \$s +force_install_dir /home/steam/core-keeper-dedicated +login anonymous +app_update 1963720 validate +quit"' 
+```
+
+That downloads ~568 MB and leaves `CoreKeeperServer`, `_launch.sh` and `ARGUMENTS.txt` in place. To refresh the game build later, set `UPDATE_ON_START=true` and redeploy — `entrypoint.sh` performs the same warm-up itself, then flips back to `false`.
+
+## Why this repo ships its own entrypoint
+
+`entrypoint.sh` replaces the image's entrypoint: it performs the steamcmd warm-up above (upstream calls steamcmd exactly once), it only touches SteamCMD when `UPDATE_ON_START=true` so an ordinary restart starts the installed binary immediately, and it gives the server 60 s on `docker stop` before killing it.
+
+The bind mount for it uses an absolute host path (`/data/coolify/applications/m9jszxgfqtd47puyi3qvmm7j/entrypoint.sh`) because Coolify runs `docker compose up` with `--project-directory` inside the build container; a relative path would resolve to a host path that does not exist and docker would silently create an empty directory instead.
