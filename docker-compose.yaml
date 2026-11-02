@@ -15,10 +15,13 @@ services:
       MAX_PLAYERS: "${MAX_PLAYERS:-8}"
       UPDATE_ON_START: "${UPDATE_ON_START:-false}"
     volumes:
-      # Absolute host path: Coolify runs `up` with --project-directory inside the
-      # build container, so a relative bind here would resolve to a path that does
-      # not exist on the host and docker would substitute an empty directory.
-      - /data/coolify/applications/m9jszxgfqtd47puyi3qvmm7j/entrypoint.sh:/opt/ck/entrypoint.sh:ro
+      # Absolute host path, not a repo file: Coolify's compose build pack copies only
+      # docker-compose.yaml to the host (no git clone), so a bind of a tracked file
+      # resolves to a path that does not exist and docker substitutes an empty dir.
+      # Deploy a changed entrypoint with:
+      #   curl -fsSL https://raw.githubusercontent.com/NaNomicon/core-keeper-server/main/entrypoint.sh \
+      #     | ssh vps07 'cat > /srv/corekeeper/entrypoint.sh && chmod 755 /srv/corekeeper/entrypoint.sh'
+      - /srv/corekeeper/entrypoint.sh:/opt/ck/entrypoint.sh:ro
       - /srv/corekeeper/server-files:/home/steam/core-keeper-dedicated
       - /srv/corekeeper/data:/home/steam/core-keeper-data
     logging:
