@@ -87,8 +87,11 @@ trap shutdown TERM INT
 joined=""
 while kill -0 "$ckpid" 2>/dev/null; do
 	if [[ -z "$joined" && -f GameInfo.txt ]]; then
-		joined=1
-		log "JOIN STRING: $(cat GameInfo.txt)"
+		join="$(grep -m1 -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+;[0-9]+;' GameInfo.txt || true)"
+		if [[ -n "$join" ]]; then
+			joined=1
+			log "JOIN STRING: $join"
+		fi
 	fi
 	sleep 1
 done

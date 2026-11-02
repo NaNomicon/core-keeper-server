@@ -11,9 +11,17 @@ Coolify loads a compose app's content from its Git workdir — it does not accep
 | Host path | Container path | Contents |
 |---|---|---|
 | `/srv/corekeeper/server-files` | `/home/steam/core-keeper-dedicated` | Game server install from SteamCMD (~500 MB, regenerable) |
-| `/srv/corekeeper/data` | `/home/steam/core-keeper-data` | Save data; world lives at `DedicatedServer/` |
+| `/srv/corekeeper/data` | `/home/steam/core-keeper-data` | Save data root — the world files sit **directly** in it |
 
-World files to place under `/srv/corekeeper/data/DedicatedServer/` before the first boot:
+With `-datapath` set, the server treats the given directory as the exact save root: it reads and
+writes `worlds/`, `worldinfos/`, `worldgenparams/`, `servermaps/`, `mods/`, `modloader/`,
+`ServerConfig.json` and `Admins.json` in it, and does **not** append `DedicatedServer/`. (That
+subdirectory is where the *Windows* build nests them under its default `LocalLow` path.) Putting the
+files one level deeper makes the server log `no existing save file, starting with empty world` and
+generate a fresh world, which then overwrites index `<id>` on save — the previous save survives only
+as `<id>.world.gzip.pugbackup`.
+
+World files to place under `/srv/corekeeper/data/` before the first boot:
 
 ```
 worlds/<id>.world.gzip        # brotli-compressed despite the .gzip suffix
@@ -23,7 +31,9 @@ servermaps/<id>.mapparts.gzip  # shared fog-of-war map, optional but wanted
 ServerConfig.json              # world name, mode, max players
 ```
 
-`<id>` must match `WORLD_ID` (default `0`).
+`<id>` must match `WORLD_ID` (default `0`). A successful load logs
+`successfully loaded world file into SerializeWorld` and `World creation version is Ck130`; the
+absence of that line is the signal that the layout is wrong.
 
 ## Ports
 
@@ -52,7 +62,7 @@ With no players the process stays up but the simulation is paused (`timescale = 
 
 ## Backups
 
-World snapshots live off-box in B2 at `b2://nanomicon-1-projects/core-keeper/<timestamp>/` and locally at `~/para/1-projects/personal/core-keeper-backups/<timestamp>/`. Snapshot procedure: stop the container (`docker stop core-keeper-dedicated`, up to 2 minutes for the final save), copy the whole `/srv/corekeeper/data/DedicatedServer` tree, then `b2 sync` it. Never copy while a save is in flight.
+World snapshots live off-box in B2 at `b2://nanomicon-1-projects/core-keeper/<timestamp>/` and locally at `~/para/1-projects/personal/core-keeper-backups/<timestamp>/`. Snapshot procedure: stop the container (`docker stop $(docker ps -q --filter name=core-keeper)`, up to 2 minutes for the final save), copy the whole `/srv/corekeeper/data` tree, then `b2 sync` it. Never copy while a save is in flight.
 
 ## Install / update procedure (the steamcmd trap)
 
@@ -74,4 +84,9 @@ That downloads ~568 MB and leaves `CoreKeeperServer`, `_launch.sh` and `ARGUMENT
 
 `entrypoint.sh` replaces the image's entrypoint: it performs the steamcmd warm-up above (upstream calls steamcmd exactly once), it only touches SteamCMD when `UPDATE_ON_START=true` so an ordinary restart starts the installed binary immediately, and it gives the server 60 s on `docker stop` before killing it.
 
-The bind mount for it uses an absolute host path (`/data/coolify/applications/m9jszxgfqtd47puyi3qvmm7j/entrypoint.sh`) because Coolify runs `docker compose up` with `--project-directory` inside the build container; a relative path would resolve to a host path that does not exist and docker would silently create an empty directory instead.
+The bind mount for it uses an absolute host path (`/srv/corekeeper/entrypoint.sh`) because Coolify's compose build pack copies only `docker-compose.yaml` to the host — there is no git clone in the application directory, so binding a tracked file resolves to a path that does not exist and docker substitutes an empty directory (the container then dies with exit 126, `Is a directory`). Deploy a changed entrypoint with:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/NaNomicon/core-keeper-server/main/entrypoint.sh \
+  | ssh vps07 'sudo -n tee /srv/corekeeper/entrypoint.sh >/dev/null && sudo -n chmod 755 /srv/corekeeper/entrypoint.sh'
+```
