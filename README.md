@@ -1,0 +1,55 @@
+# Core Keeper dedicated server (Coolify, vps07)
+
+Runs the official Core Keeper dedicated server (Steam app `1963720`) in Direct Connect mode so GOG / Epic / Microsoft / Steam clients can join by `IP;PORT;;PASSWORD`.
+
+## Why this file exists
+
+Coolify loads a compose app's content from its Git workdir — it does not accept inline compose through the API. This repo is that workdir. The container image is pinned; the **game build is not** — the image runs SteamCMD on startup, so a restart may pick up a newer server build. Check `docker logs core-keeper-dedicated | grep "Ck1"` after any restart.
+
+## Host layout on vps07
+
+| Host path | Container path | Contents |
+|---|---|---|
+| `/srv/corekeeper/server-files` | `/home/steam/core-keeper-dedicated` | Game server install from SteamCMD (~500 MB, regenerable) |
+| `/srv/corekeeper/data` | `/home/steam/core-keeper-data` | Save data; world lives at `DedicatedServer/` |
+
+World files to place under `/srv/corekeeper/data/DedicatedServer/` before the first boot:
+
+```
+worlds/<id>.world.gzip        # brotli-compressed despite the .gzip suffix
+worldinfos/<id>.worldinfo
+worldgenparams/<id>.json
+servermaps/<id>.mapparts.gzip  # shared fog-of-war map, optional but wanted
+ServerConfig.json              # world name, mode, max players
+```
+
+`<id>` must match `WORLD_ID` (default `0`).
+
+## Ports
+
+UDP `27015` published directly by Docker — Traefik does not proxy game UDP, so no Coolify FQDN is involved. The host firewall needs `27015/udp` open; the provider firewall must allow it too.
+
+Direct Connect is enabled only by the `-port` flag, which the image sets from `SERVER_PORT`. Without it the server falls back to Steam relay and GOG clients cannot join at all.
+
+## Environment
+
+| Variable | Effect | Flag passed |
+|---|---|---|
+| `WORLD_ID` | world index | `-world` |
+| `WORLD_NAME` | name shown to clients | `-worldname` |
+| `SERVER_PORT` | Direct Connect port | `-port` |
+| `SERVER_PASSWORD` | join password, max 28 chars | `-password` |
+
+Values come from Coolify's environment for this app, not from this repo.
+
+## Empty-server behaviour (measured on the Windows build, 2026-11-02)
+
+With no players the process stays up but the simulation is paused (`timescale = 0`): no crop growth, no day/night, no mob movement. The world resumes where it stopped on the first join. Idle cost was ~1.5% of one core and ~300 MB resident after a session; a connected player pushed it to ~20% of a core and the host logged occasional 55 ms frame-budget misses.
+
+## Mods
+
+`DedicatedServer/mods/` is configuration only; mods load from `StreamingAssets/Mods` inside the install, which this image recreates on update. No mods are in use for world `AeTao`.
+
+## Backups
+
+World snapshots live off-box in B2 at `b2://nanomicon-1-projects/core-keeper/<timestamp>/` and locally at `~/para/1-projects/personal/core-keeper-backups/<timestamp>/`. Snapshot procedure: stop the container (`docker stop core-keeper-dedicated`, up to 2 minutes for the final save), copy the whole `/srv/corekeeper/data/DedicatedServer` tree, then `b2 sync` it. Never copy while a save is in flight.

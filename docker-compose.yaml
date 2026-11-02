@@ -1,0 +1,22 @@
+services:
+  core-keeper:
+    image: devidian/core-keeper-dedicated:sha-4220663c8d42f7a1df31e6ab2b698c0b8294a001
+    container_name: core-keeper-dedicated
+    restart: unless-stopped
+    stop_grace_period: 2m
+    ports:
+      - "27015:27015/udp"
+    environment:
+      DATA_PATH: /home/steam/core-keeper-data
+      WORLD_ID: "${WORLD_ID:-0}"
+      WORLD_NAME: "${WORLD_NAME:-AeTao}"
+      SERVER_PORT: "${SERVER_PORT:-27015}"
+      SERVER_PASSWORD: "${SERVER_PASSWORD}"
+    volumes:
+      - /srv/corekeeper/server-files:/home/steam/core-keeper-dedicated
+      - /srv/corekeeper/data:/home/steam/core-keeper-data
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "3"
